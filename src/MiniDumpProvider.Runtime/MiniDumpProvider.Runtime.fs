@@ -24,14 +24,11 @@ module ValueProvider =
             field.GetValue(clrObject.Address, clrObject.Type.IsValueClass)
         elif (t.IsValueClass) then
             let address = field.GetAddress(clrObject.Address, clrObject.Type.IsValueClass)
-            ClrObject(address, field.Type) :> obj
+            ClrObject(address, t) :> obj
         else
-            let address = field.GetValue(clrObject.Address, clrObject.Type.IsValueClass) :?> uint64
-            if (address = 0UL) then 
-                null
-            else 
-                ClrObject(address, field.Type) :> obj
-            
+            match field.GetValue(clrObject.Address, clrObject.Type.IsValueClass) with
+            | :? uint64 as address when address <> 0UL -> clrObject.Type.Heap.GetObject(address) :> obj
+            | _ -> null
 
         //if (TypeHelper.isPrimitive t) then
         // if (clrObject.Type.IsValueClass) then
@@ -76,11 +73,9 @@ module ValueProvider =
             let address = t.GetArrayElementAddress(clrObject.Address, i)
             ClrObject(address, t.ComponentType) :> obj
         else
-            let address = t.GetArrayElementValue(clrObject.Address, i) :?> uint64
-            if (address = 0UL) then 
-                null
-            else 
-                ClrObject(address, t.ComponentType) :> obj
+            match t.GetArrayElementValue(clrObject.Address, i) with
+            | :? uint64 as address when address <> 0UL -> clrObject.Type.Heap.GetObject(address) :> obj
+            | _ -> null
 
     type ClrArrayEnumerator<'T>(clrObject:ClrObject) =
         let mutable _current:'T = Unchecked.defaultof<'T>
@@ -88,7 +83,7 @@ module ValueProvider =
         interface IEnumerator<'T> with
             member __.MoveNext() =
                 if (_index < clrObject.Length) then
-                    _current <- getArrayElementAt clrObject _index :?> 'T
+                    _current <- let element = getArrayElementAt clrObject _index in if element = null then Unchecked.defaultof<'T> else element :?> 'T
                     _index <- _index + 1
                     true
                 else false

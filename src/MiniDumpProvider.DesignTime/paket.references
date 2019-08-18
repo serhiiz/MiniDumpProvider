@@ -1,4 +1,5 @@
 FSharp.Core
 Microsoft.Diagnostics.Runtime
+System.Reflection.Emit framework: netstandard2.0
 File:ProvidedTypes.fsi
 File:ProvidedTypes.fs

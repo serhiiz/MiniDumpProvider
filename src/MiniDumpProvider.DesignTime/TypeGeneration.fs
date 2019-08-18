@@ -74,13 +74,18 @@ module internal TypeGeneration =
             fun () -> ProvidedProperty("__Length", typeof<int>, getterCode = (fun args -> <@@ ((%%(args.[0]) : obj) :?> ClrObject).Length @@>))
             |> ptd.AddMemberDelayed
 
-            let arrayElementType = getMembetType t.ComponentType
+            let arrayElementType = 
+                if t.ComponentType.ElementType = ClrElementType.Unknown // Defect in clrmd https://github.com/microsoft/clrmd/issues/115
+                then typeof<ClrObject>
+                else getMembetType t.ComponentType
             
-            let runtimeElementType = 
-                if TypeHelper.isPrimitive t.ComponentType 
-                then arrayElementType
-                else typeof<obj>
-            let enumeratorConstructorInfo = typedefof<ValueProvider.ClrArrayEnumerable<_>>.MakeGenericType([|runtimeElementType|]).GetConstructor([|typeof<ClrObject>|])
+            let tn = typedefof<ValueProvider.ClrArrayEnumerable<_>>
+            let gtn = tn.MakeGenericType([|arrayElementType|])
+            let enumeratorConstructorInfo =
+                match arrayElementType with 
+                | :? ProvidedTypeDefinition -> System.Reflection.Emit.TypeBuilder.GetConstructor(gtn, tn.GetConstructor([|typeof<ClrObject>|]))
+                | _ -> gtn.GetConstructor([|typeof<ClrObject>|])
+            
 
             let returnType = typedefof<IEnumerable<_>>.MakeGenericType([|arrayElementType|])
             fun () -> ProvidedMethod("__EnumerateItems", [],  returnType, 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -25,7 +26,9 @@ namespace TestApp
                     BoxedInt = 20,
                     BoxedComplexValueType = (object)ComplexValueType2.Create(21),
                     InterfaceHiddenObject = ReferenceType2.Create(22),
-                    InterfaceBoxedValueType = ComplexValueType2.Create(23)
+                    InterfaceBoxedValueType = ComplexValueType2.Create(23),
+                    ListOfObjectsField = Enumerable.Range(24, 2).Select(ReferenceType2.Create).ToList(),
+                    ListOfStructsField = Enumerable.Range(26, 2).Select(ComplexValueType2.Create).ToList()
                 },
 
                 ComplexValueType = new ComplexValueType
@@ -42,7 +45,9 @@ namespace TestApp
                     BoxedInt = 70,
                     BoxedComplexValueType = (object)ComplexValueType2.Create(71),
                     InterfaceHiddenObject = ReferenceType2.Create(72),
-                    InterfaceBoxedValueType = ComplexValueType2.Create(73)
+                    InterfaceBoxedValueType = ComplexValueType2.Create(73),
+                    ListOfObjectsField = Enumerable.Range(74, 2).Select(ReferenceType2.Create).ToList(),
+                    ListOfStructsField = Enumerable.Range(76, 2).Select(ComplexValueType2.Create).ToList()
                 },
 
                 SpecialTypes = new SpecialTypes
@@ -90,6 +95,8 @@ namespace TestApp
         public object BoxedComplexValueType;
         public IInterface1 InterfaceHiddenObject;
         public IInterface2 InterfaceBoxedValueType;
+        public List<ReferenceType2> ListOfObjectsField;
+        public List<ComplexValueType2> ListOfStructsField;
     }
 
     public struct ComplexValueType
@@ -107,6 +114,8 @@ namespace TestApp
         public object BoxedComplexValueType;
         public IInterface1 InterfaceHiddenObject;
         public IInterface2 InterfaceBoxedValueType;
+        public List<ReferenceType2> ListOfObjectsField;
+        public List<ComplexValueType2> ListOfStructsField;
     }
 
     public class SpecialTypes

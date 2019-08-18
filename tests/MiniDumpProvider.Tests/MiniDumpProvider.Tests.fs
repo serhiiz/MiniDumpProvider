@@ -86,6 +86,24 @@ let ``Access a null field`` () =
     let root = runtime.Heap.EnumerateObjectsOfType<Root>() |> Seq.head
     root.ReferenceType.NullField |> should equal null
 
+[<Test>]
+let ``Access a list of a complex reference type field within a reference type`` () =
+    let root = runtime.Heap.EnumerateObjectsOfType<Root>() |> Seq.head
+    root.ReferenceType.ListOfObjectsField._items.__EnumerateItems() 
+    |> Seq.filter (fun p -> p.IsNull |> not)
+    |> Seq.map (fun p -> p.ToTypedObject<T.TestApp.ReferenceType2>()) // Needed because of a defect in clrmd https://github.com/microsoft/clrmd/issues/115
+    |> Seq.map (fun p -> p.ValueField2, p.ReferenceField2) 
+    |> Seq.toArray 
+    |> should equal [|(24,"24");(25,"25")|]
+
+[<Test>]
+let ``Access a list of a complex value type field within a reference type`` () =
+    let root = runtime.Heap.EnumerateObjectsOfType<Root>() |> Seq.head
+    root.ReferenceType.ListOfStructsField._items.__EnumerateItems() 
+    |> Seq.map (fun p -> p.ValueField2, p.ReferenceField2) 
+    |> Seq.toArray 
+    |> should equal [|(26,"26");(27,"27");(0,(null:string));(0,(null:string))|]    
+
 // [<Test>]
 // let ``Access a boxed value type field`` () =
 //     let root = runtime.Heap.EnumerateObjectsOfType<Root>() |> Seq.head
