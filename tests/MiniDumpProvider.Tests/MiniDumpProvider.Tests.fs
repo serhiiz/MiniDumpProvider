@@ -104,6 +104,17 @@ let ``Access a list of a complex value type field within a reference type`` () =
     |> Seq.toArray 
     |> should equal [|(26,"26");(27,"27");(0,(null:string));(0,(null:string))|]    
 
+[<Test>]
+let ``Access a type with a property of a nested type`` () =
+    let root = runtime.Heap.EnumerateObjectsOfType<Root>() |> Seq.head
+    root.NestedType.NestedClassField.__ClrObject 
+    |> should not' null
+
+[<Test>]
+let ``A type with a property of a nested type has method table exposed`` () =
+    T.TestApp.OuterClass.__MethodTable
+    |> ignore
+
 // [<Test>]
 // let ``Access a boxed value type field`` () =
 //     let root = runtime.Heap.EnumerateObjectsOfType<Root>() |> Seq.head

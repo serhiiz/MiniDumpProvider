@@ -122,12 +122,12 @@ module internal TypeGeneration =
             let parts = fullName |> splitName |> Array.toList
             let node = getNode typeHierarchy parts 
 
-            if (node.Type.Value.IsSome) then
-                ptd.AddMembersDelayed(fun () -> getTypeMembers ptd (getEvaluatedType cache) node.Type.Value.Value |> Seq.toList)
-            
             ptd.AddMembersDelayed(fun () -> 
                 node.Children 
                 |> Seq.toList
                 |> List.map (fun p -> getOrCreateType typeHierarchy cache context p.FullName))
+
+            if (node.Type.Value.IsSome) then
+                ptd.AddMembersDelayed(fun () -> getTypeMembers ptd (getEvaluatedType cache) node.Type.Value.Value |> Seq.toList)
 
             ptd

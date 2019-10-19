@@ -57,6 +57,11 @@ namespace TestApp
                     Guid = new Guid("d4af2890-5b89-4fb9-aa6f-2df144ceac3f"),
                     Enum = DayOfWeek.Friday,
                     EnumFlag = BindingFlags.Public | BindingFlags.Instance
+                },
+
+                NestedType = new OuterClass
+                {
+                    NestedClassField = new OuterClass.NestedClass()
                 }
             };
 
@@ -78,6 +83,7 @@ namespace TestApp
         public ReferenceType ReferenceType;
         public ComplexValueType ComplexValueType;
         public SpecialTypes SpecialTypes;
+        public OuterClass NestedType;
     }
         
     public class ReferenceType
@@ -164,6 +170,16 @@ namespace TestApp
                 ValueField2 = seed,
                 ReferenceField2 = seed.ToString()
             };
+        }
+    }
+
+    public class OuterClass
+    {
+        public NestedClass NestedClassField;
+
+        public class NestedClass
+        {
+
         }
     }
 }
