@@ -6,6 +6,8 @@
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFrameworks>netstandard2.0; net45</TargetFrameworks>
+    <Optimize>true</Optimize>
+    <Tailcalls>true</Tailcalls>
     <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
   </PropertyGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
@@ -20,6 +22,7 @@
     </Compile>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="DumpFile.fs" />
+    <Compile Include="TypeTree.fs" />
     <Compile Include="MiniDumpProvider.Runtime.fs" />
     <None Include="paket.references" />
   </ItemGroup>

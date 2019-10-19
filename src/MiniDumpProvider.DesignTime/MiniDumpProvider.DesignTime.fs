@@ -6,9 +6,7 @@ open System
 open System.Reflection
 open System.Diagnostics
 open TypeGeneration
-open DumpFile
 open FSharp.Data.MiniDumpProvider
-
 open System.Collections.Generic
 
 
@@ -19,31 +17,25 @@ type public MiniDumpProvider (config : TypeProviderConfig) as this =
     let ns = "FSharp.Data.MiniDumpProvider"
     let asm = Assembly.GetExecutingAssembly()
 
-    let checkRootType (t:ProvidedTypeDefinition) =
-        t.FullName.Replace("Generated.", String.Empty)
-        |> splitName |> (fun s -> s.Length <= 2)
-
     let createType typeName (path:string) attachDebugger =
-
         if attachDebugger then Debugger.Launch() |> ignore
 
+        let cache = Dictionary()
         let rootType = ProvidedTypeDefinition(asm, ns, typeName, Some typeof<obj>, hideObjectMethods = true)
-        let runtime = initRuntime path None
-        let ctx = {Assembly = asm; Namespace = "Generated"; Runtime = runtime}
-
-        runtime.Heap.EnumerateTypes()
-            |> Seq.filter (TypeHelper.isPrimitive >> not)
-            |> Seq.fold (fun s t -> getOrCreateType s ctx t |> ignore; s) (Dictionary())
-            |> Seq.map (fun kvp -> kvp.Value)
-            |> Seq.filter checkRootType
-            |> Seq.iter rootType.AddMember
-
+        rootType.AddMembersDelayed(fun () -> 
+                       let runtime = DumpFile.initRuntime path None
+                       let typeTree = TypeTree.createTypeTree runtime.Heap
+                       let ctx = {Assembly = asm; Namespace = ns; Runtime = runtime}
+                       typeTree.Children 
+                       |> Seq.toList
+                       |> List.map (fun p -> getOrCreateType typeTree cache ctx p.Name))
+        
         ProvidedMethod(
             "CreateRuntime", 
             [], 
             typeof<Microsoft.Diagnostics.Runtime.ClrRuntime>, 
             invokeCode = (fun _ -> let capturedPath = path
-                                   <@@ initRuntime capturedPath None @@>), 
+                                   <@@ DumpFile.initRuntime capturedPath None @@>), 
             isStatic = true)
         |> rootType.AddMember
 

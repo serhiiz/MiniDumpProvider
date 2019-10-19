@@ -90,8 +90,8 @@ let ``Access a null field`` () =
 let ``Access a list of a complex reference type field within a reference type`` () =
     let root = runtime.Heap.EnumerateObjectsOfType<Root>() |> Seq.head
     root.ReferenceType.ListOfObjectsField._items.__EnumerateItems() 
-    |> Seq.filter (fun p -> p.IsNull |> not)
-    |> Seq.map (fun p -> p.ToTypedObject<T.TestApp.ReferenceType2>()) // Needed because of a defect in clrmd https://github.com/microsoft/clrmd/issues/115
+    |> Seq.filter (fun p -> p |> isNull |> not)
+    |> Seq.map (fun p -> p.__ClrObject.ToTypedObject<T.TestApp.ReferenceType2>()) // Needed because of a defect in clrmd https://github.com/microsoft/clrmd/issues/115
     |> Seq.map (fun p -> p.ValueField2, p.ReferenceField2) 
     |> Seq.toArray 
     |> should equal [|(24,"24");(25,"25")|]

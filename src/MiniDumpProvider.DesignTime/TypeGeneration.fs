@@ -8,127 +8,126 @@ module internal TypeGeneration =
     open FSharp.Quotations
     open System.Reflection
     open System.Collections.Generic
+    open TypeTree
 
     type GenerationContext = {Assembly:Assembly; Namespace:string; Runtime: ClrRuntime}
-
-    let splitName (s:string) = 
-        s.Split([|'.'; '+'|])
 
     let parseName (n:string) =
         let arr = n |> splitName
         match arr with 
+        | [||] -> (None, "")
         | [|name|] -> (None, name)
         | [|ns; name|] -> (Some ns, name)
         | _ -> let name = arr |> Array.last in (Some (n.Substring(0, n.Length - 1 - name.Length)), name)
 
-    let populateType (ptd:ProvidedTypeDefinition) (getOrCreateType:ClrType->ProvidedTypeDefinition) (t:ClrType) : unit =
+    let getTypeMembers (ptd:ProvidedTypeDefinition) (getOrCreateType:string->Type) (t:ClrType) : MemberInfo seq =
+        seq {
+            let mt = t.MethodTable
         
-        let mt = t.MethodTable
+            yield ProvidedConstructor(
+                    parameters = [ ProvidedParameter("clrObject",typeof<ClrObject>) ],
+                    invokeCode = 
+                        (fun args -> <@@ (%%(args.[0]) : ClrObject) :> obj @@>))
+
+            let getMembetType (t:ClrType) =
+                if TypeHelper.isPrimitive t then 
+                    Type.GetType(t.Name) 
+                elif t.Name = "System.__Canon[]" then
+                    getOrCreateType "System.Object[]"
+                else getOrCreateType t.Name
         
-        fun () -> 
-            ProvidedConstructor(
-                parameters = [ ProvidedParameter("clrObject",typeof<ClrObject>) ],
-                invokeCode = 
-                    (fun args -> <@@ (%%(args.[0]) : ClrObject) :> obj @@>))
-        |> ptd.AddMemberDelayed
+            yield!
+                t.Fields
+                |> Seq.toList
+                |> List.groupBy (fun f -> f.Name) // E.g. System.Reflection.Emit.LocalBuilder has duplicated field names
+                |> List.collect (fun (_,vs) -> match vs with 
+                                               | [single] -> [(single.Name, single)]
+                                               | _ -> vs |> List.map (fun f -> (sprintf "%s_at_%s" f.Name (f.Offset.ToString("X")), f)))
+                |> List.map 
+                    (fun (n, f) -> 
+                        ProvidedProperty(n, getMembetType f.Type, 
+                            getterCode= (
+                                fun args -> 
+                                    let name = f.Name
+                                    <@@ let clrObject = ((%%(args.[0]) : obj) :?> ClrObject) in ValueProvider.getValue clrObject name @@> )) :> MemberInfo)
 
-        let getMembetType (t:ClrType) =
-            if TypeHelper.isPrimitive t 
-            then Type.GetType(t.Name) 
-            else getOrCreateType t :> Type
-        
-        fun () -> 
-            t.Fields
-            |> Seq.toList
-            |> List.groupBy (fun f -> f.Name) // E.g. System.Reflection.Emit.LocalBuilder has duplicated field names
-            |> List.collect (fun (_,vs) -> match vs with 
-                                           | [single] -> [(single.Name, single)]
-                                           | _ -> vs |> List.map (fun f -> (sprintf "%s_at_%s" f.Name (f.Offset.ToString("X")), f)))
-            |> List.map 
-                (fun (n, f) -> 
-                    ProvidedProperty(n, getMembetType f.Type, 
-                        getterCode= (
-                            fun args -> 
-                                let name = f.Name
-                                <@@ let clrObject = ((%%(args.[0]) : obj) :?> ClrObject) in ValueProvider.getValue clrObject name @@> )))
-        |> ptd.AddMembersDelayed
+            yield ProvidedProperty("__ClrObject", typeof<ClrObject>, getterCode = fun args -> <@@ ((%%(args.[0]) : obj) :?> ClrObject) @@>)
 
-        fun () -> ProvidedProperty("__ClrObject", typeof<ClrObject>, getterCode = fun args -> <@@ ((%%(args.[0]) : obj) :?> ClrObject) @@>)
-        |> ptd.AddMemberDelayed
+            yield ProvidedProperty("__MethodTable", typeof<uint64>, getterCode = (fun _ -> <@@ mt @@>), isStatic = true)
 
-        fun () -> ProvidedProperty("__MethodTable", typeof<uint64>, getterCode = (fun _ -> <@@ mt @@>), isStatic = true)
-        |> ptd.AddMemberDelayed
+            yield ProvidedMethod("__CreateInstance", [ProvidedParameter("clrObject",typeof<ClrObject>)], ptd, 
+                            invokeCode = (fun args -> let clrObject = args.[0]
+                                                      clrObject),
+                            isStatic = true)
 
-        fun () -> ProvidedMethod("__CreateInstance", [ProvidedParameter("clrObject",typeof<ClrObject>)], ptd, 
-                        invokeCode = (fun args -> let clrObject = args.[0]
-                                                  clrObject),
-                        isStatic = true)
-        |> ptd.AddMemberDelayed
+            yield ProvidedMethod("__GetClrType", [ProvidedParameter("clrHeap",typeof<ClrHeap>)], typeof<ClrType>, 
+                            invokeCode = (fun args -> <@@ (%%(args.[0]) : ClrHeap).GetTypeByMethodTable(mt) @@>),
+                            isStatic = true)
 
-        fun () -> ProvidedMethod("__GetClrType", [ProvidedParameter("clrHeap",typeof<ClrHeap>)], typeof<ClrType>, 
-                        invokeCode = (fun args -> <@@ (%%(args.[0]) : ClrHeap).GetTypeByMethodTable(mt) @@>),
-                        isStatic = true)
-        |> ptd.AddMemberDelayed
+            if t.IsArray then
+                yield ProvidedProperty("__Length", typeof<int>, getterCode = (fun args -> <@@ ((%%(args.[0]) : obj) :?> ClrObject).Length @@>))
 
-        if t.IsArray then
-            fun () -> ProvidedProperty("__Length", typeof<int>, getterCode = (fun args -> <@@ ((%%(args.[0]) : obj) :?> ClrObject).Length @@>))
-            |> ptd.AddMemberDelayed
-
-            let arrayElementType = 
-                if t.ComponentType.ElementType = ClrElementType.Unknown // Defect in clrmd https://github.com/microsoft/clrmd/issues/115
-                then typeof<ClrObject>
-                else getMembetType t.ComponentType
+                let arrayElementType = 
+                    if t.ComponentType.ElementType = ClrElementType.Unknown // Defect in clrmd https://github.com/microsoft/clrmd/issues/115
+                    then typeof<ClrObject>
+                    else getMembetType t.ComponentType
             
-            let tn = typedefof<ValueProvider.ClrArrayEnumerable<_>>
-            let gtn = tn.MakeGenericType([|arrayElementType|])
-            let enumeratorConstructorInfo =
-                match arrayElementType with 
-                | :? ProvidedTypeDefinition -> System.Reflection.Emit.TypeBuilder.GetConstructor(gtn, tn.GetConstructor([|typeof<ClrObject>|]))
-                | _ -> gtn.GetConstructor([|typeof<ClrObject>|])
+                let tn = typedefof<ValueProvider.ClrArrayEnumerable<_>>
+                let gtn = tn.MakeGenericType([|arrayElementType|])
+                let enumeratorConstructorInfo =
+                    match arrayElementType with 
+                    | :? ProvidedTypeDefinition -> System.Reflection.Emit.TypeBuilder.GetConstructor(gtn, tn.GetConstructor([|typeof<ClrObject>|]))
+                    | _ -> gtn.GetConstructor([|typeof<ClrObject>|])
             
 
-            let returnType = typedefof<IEnumerable<_>>.MakeGenericType([|arrayElementType|])
-            fun () -> ProvidedMethod("__EnumerateItems", [],  returnType, 
-                        invokeCode = (fun args -> let enumerable = Expr.NewObject(enumeratorConstructorInfo, [Expr.Coerce(args.[0], typeof<ClrObject>)])
-                                                  Expr.Coerce(enumerable, returnType)))
-            |> ptd.AddMemberDelayed
-        ()
+                let returnType = typedefof<IEnumerable<_>>.MakeGenericType([|arrayElementType|])
+                yield ProvidedMethod("__EnumerateItems", [],  returnType, 
+                            invokeCode = (fun args -> let enumerable = Expr.NewObject(enumeratorConstructorInfo, [Expr.Coerce(args.[0], typeof<ClrObject>)])
+                                                      Expr.Coerce(enumerable, returnType)))
+            }
 
 
-    let rec getOrCreateNamespace (cache:IDictionary<string,ProvidedTypeDefinition>) context (fullName:string) : ProvidedTypeDefinition = 
-        match fullName with 
-        | null 
-        | "" -> 
-            getOrCreateNamespace cache context ""
-        | _ -> 
-            match (cache.TryGetValue fullName) with
-            | (true, nsd) -> nsd
-            | _ -> 
-                let (nso, name) = parseName fullName
-                let nsType = ProvidedTypeDefinition(context.Assembly, context.Namespace, name, Some typeof<obj>, hideObjectMethods = true)
-                cache.Add (fullName, nsType)
+    let rec getEvaluatedType cache fullName =
+
+        let findEvaluatedType fullName cache =
+            let rec findEvaluatedTypeCore fullName missingParts (cache:IDictionary<string,ProvidedTypeDefinition>) =
+                match (cache.TryGetValue fullName) with
+                | (true, d) -> d, missingParts
+                | _ ->
+                    let (nso, name) = parseName fullName
+                    findEvaluatedTypeCore (nso |> Option.defaultValue "") (name :: missingParts) cache
+
+            findEvaluatedTypeCore fullName [] cache
+
+        let rec evalTypes (rootType:Type) (names:string list) =
+            match names with 
+            | [] -> rootType
+            | head :: tail ->
+                let newlyEvaluatedType = rootType.GetNestedType(head.Replace('.', '_'))
+                evalTypes newlyEvaluatedType tail
                 
-                if (nso |> Option.isSome) then  
-                    let parentNamespaceType = getOrCreateNamespace cache context nso.Value
-                    parentNamespaceType.AddMember nsType
-                nsType
+        findEvaluatedType fullName cache ||> evalTypes
+        
 
-    let rec getOrCreateType (cache:IDictionary<string,ProvidedTypeDefinition>) context (t:ClrType) : ProvidedTypeDefinition =
-        match (cache.TryGetValue t.Name) with
+    let rec getOrCreateType (typeHierarchy:Node) (cache:IDictionary<string,ProvidedTypeDefinition>) context fullName : ProvidedTypeDefinition =
+        match (cache.TryGetValue fullName) with
         | (true, d) -> d
         | _ ->
-            let (nso, name) = parseName t.Name        
+            let (nso, name) = parseName fullName 
+            
             let parentTypeOption = Some typeof<obj>
-            match (cache.TryGetValue t.Name) with
-            | (true, d) -> d
-            | _ ->
-                let ptd = ProvidedTypeDefinition(context.Assembly, context.Namespace, name, parentTypeOption, hideObjectMethods = true)
-                cache.Add(t.Name, ptd)
+            let ptd = ProvidedTypeDefinition(context.Assembly, nso |> Option.defaultValue null, name.Replace('.', '_'), parentTypeOption, hideObjectMethods = true)
+            cache.Add(fullName, ptd)
 
-                populateType ptd (getOrCreateType cache context) t
+            let parts = fullName |> splitName |> Array.toList
+            let node = getNode typeHierarchy parts 
 
-                if (nso |> Option.isSome) then
-                    let nsType = getOrCreateNamespace cache context nso.Value
-                    nsType.AddMember ptd
+            if (node.Type.Value.IsSome) then
+                ptd.AddMembersDelayed(fun () -> getTypeMembers ptd (getEvaluatedType cache) node.Type.Value.Value |> Seq.toList)
+            
+            ptd.AddMembersDelayed(fun () -> 
+                node.Children 
+                |> Seq.toList
+                |> List.map (fun p -> getOrCreateType typeHierarchy cache context p.FullName))
 
-                ptd
+            ptd

@@ -21,6 +21,7 @@
     </Compile>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="..\MiniDumpProvider.Runtime\DumpFile.fs" />
+    <Compile Include="..\MiniDumpProvider.Runtime\TypeTree.fs" Link="TypeTree.fs" />
     <Compile Include="..\MiniDumpProvider.Runtime\MiniDumpProvider.Runtime.fs" />
     <Compile Include="TypeGeneration.fs" />
     <Compile Include="MiniDumpProvider.DesignTime.fs" />
